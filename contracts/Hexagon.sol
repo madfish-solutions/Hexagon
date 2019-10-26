@@ -4,13 +4,13 @@ import "./SafeMath.sol";
 
 contract Hexcoin {
     using SafeMath for uint;
-    uint public fieldWidth;
-    uint public fieldHeight;
-    uint public minPrice;
-    uint public minStep;
+    uint public fieldWidth = 100;
+    uint public fieldHeight = 100;
+    uint public minPrice = 10;
+    uint public minStep = 110; // in %
+    uint public salePrice = 90; // in %
     uint public lastActionTime;
     uint public maxDelay;
-    uint public funds;
     uint public ownedBlocks;
     uint public round;
     
@@ -23,40 +23,41 @@ contract Hexcoin {
         uint price;
     }
     
-    struct Coordinate {
-        uint x;
-        uint y;
-        uint z;
-    }
-    
     address[] public users;
     mapping(address => User) public userInfo;
-    mapping (bytes32 => Hexagon) public field;
+    mapping(uint => mapping (bytes32 => Hexagon)) public rounds;
+    mapping(uint => uint) public funds;
 
-    function sendRewards() private {
-        
+    function updateRewards() private {
+        round += 1;
     }
     
     // TODO: push dublicates
     function buyBlock(uint x, uint y, uint z) public payable {
-        uint blockId = keccak256(abi.encodePacked(x, y, z));
+        bytes32 blockId = keccak256(abi.encodePacked(x, y, z));
+        mapping(bytes32 => Hexagon) field = rounds[round];
+    
         if (lastActionTime + maxDelay < block.number) {
-            sendRewards();
+            updateRewards();
         }
-        // check last action time
+        uint price = (field[blockId].price > 0) ? field[blockId].price.mul(minStep).div(100) : minPrice; 
         if (userInfo[msg.sender].ownedBlocks == 0) {
-            require(field[blockId].price == msg.value);
+            require(price == msg.value);
             users.push(msg.sender);
         } else {
-            uint price = field[blockId].price;
-            // checks
-            require(price == msg.value);
+            uint userSale = (field[keccak256(abi.encodePacked(x, y + 1, z - 1))].owner == msg.sender ||
+                field[keccak256(abi.encodePacked(x, y + 1, z - 1))].owner == msg.sender ||
+                field[keccak256(abi.encodePacked(x - 1, y, z + 1))].owner == msg.sender ||
+                field[keccak256(abi.encodePacked(x + 1, y, z - 1))].owner == msg.sender ||
+                field[keccak256(abi.encodePacked(x - 1, y + 1, z))].owner == msg.sender ||
+                field[keccak256(abi.encodePacked(x + 1, y - 1, z))].owner == msg.sender) ? salePrice : 100;
+            require(price.mul(userSale).div(100) == msg.value);
         }
         field[blockId].owner = msg.sender;
         field[blockId].price = msg.value;
         lastActionTime = block.number;
         userInfo[msg.sender].ownedBlocks += 1;
-        funds += msg.value;
+        funds[round] += msg.value;
         ownedBlocks += 1;
     } 
 }
